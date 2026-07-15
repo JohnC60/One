@@ -41,8 +41,9 @@ const reactionMapping = [200, 50, 40, 30, 20, 15, 10, 5, 2, 0];
 let currentServer = Math.random() > 0.5 ? "player" : "computer"; 
 let lastHitBy = null; 
 
-// --- Straight Line Trap Prevention Tracking ---
+// --- Anti-Trap Tracking ---
 let consecutiveFlatBounces = 0;
+let recentBounceTimeline = []; 
 
 // --- Single Ghost Obstacle Configuration ---
 const ghost = {
@@ -89,12 +90,11 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'r' || e.key === 'R') computer.reactionLevel = (computer.reactionLevel + 1) % 10;
     if (e.key === 'n' || e.key === 'N') startNewGame();
     
-    // NEW: Handle Straight-Line Test Case (Z key)
     if (e.key === 'z' || e.key === 'Z') {
-        ball.y = canvas.height - ball.radius - 2; // Snap right above the bottom wall
-        ball.speedY = 0;                          // Completely flat bounce trajectory
-        ball.speedX = (ball.speedX > 0) ? 5 : -5;  // Keep the current horizontal momentum
-        consecutiveFlatBounces = 0;                // Reset counter for the test sequence
+        ball.y = canvas.height - ball.radius - 2; 
+        ball.speedY = 0;                          
+        ball.speedX = (ball.speedX > 0) ? 5 : -5;  
+        consecutiveFlatBounces = 0;                
     }
 });
 window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
@@ -153,7 +153,8 @@ function resetBall() {
     ball.speedX = (currentServer === "player") ? 5 : -5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
     lastHitBy = null; 
-    consecutiveFlatBounces = 0; // Reset tracking on fresh serve
+    consecutiveFlatBounces = 0; 
+    recentBounceTimeline = []; 
 
     clearTimeout(ghostTimeout);
     ghost.active = false; 
@@ -178,6 +179,34 @@ function resolveRally(rallyWinner) {
         currentServer = rallyWinner;
     }
     resetBall();
+}
+
+function detectAndFixCornerTrap() {
+    const now = performance.now();
+    recentBounceTimeline.push(now);
+    recentBounceTimeline = recentBounceTimeline.filter(time => now - time < 400);
+
+    if (recentBounceTimeline.length >= 3) {
+        if (ball.y > canvas.height / 2) {
+            ball.y -= 25; 
+            ball.speedY = -Math.abs(ball.speedY) - 2; 
+        } else {
+            ball.y += 25; 
+            ball.speedY = Math.abs(ball.speedY) + 2;  
+        }
+
+        if (ball.x > canvas.width / 2) {
+            ball.x -= 20;
+            ball.speedX = -5; 
+        } else {
+            ball.x += 20;
+            ball.speedX = 5;  
+        }
+        
+        recentBounceTimeline = []; 
+        return true; 
+    }
+    return false;
 }
 
 // --- Game Logic Update ---
@@ -211,44 +240,42 @@ function update() {
     let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
     ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
 
-    // 6. Paddle Collisions & Flat Line Checks
+    // 6. Paddle Collisions & Anti-Trap Execution
     if (collision(ball, player)) {
-        ball.speedX = -ball.speedX;
-        
-        // Check if the ball is moving roughly horizontally (flat line threshold)
-        if (Math.abs(ball.speedY) < 0.2) {
-            consecutiveFlatBounces++;
-        } else {
-            consecutiveFlatBounces = 0;
-        }
+        if (!detectAndFixCornerTrap()) {
+            // NEW: Anti-clipping safety nudge to make sure the ball stays in front of the paddle
+            ball.x = player.x + player.width + ball.radius;
+            ball.speedX = Math.abs(ball.speedX); // Force direction right
+            
+            if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
+            else consecutiveFlatBounces = 0;
 
-        // NEW: Escape protocol if trapped for more than 1 back-and-forth cycle (2 paddle hits)
-        if (consecutiveFlatBounces >= 2) {
-            // Introduce a subtle angle kick out (positive or negative spin)
-            ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
-            consecutiveFlatBounces = 0;
-        } else {
-            // Normal angle calculations
-            let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
-            ball.speedY = collidePoint * 7;
+            if (consecutiveFlatBounces >= 2) {
+                ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
+                consecutiveFlatBounces = 0;
+            } else {
+                let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
+                ball.speedY = collidePoint * 7;
+            }
         }
         lastHitBy = "player"; 
     }
     else if (collision(ball, computer)) {
-        ball.speedX = -ball.speedX;
-        
-        if (Math.abs(ball.speedY) < 0.2) {
-            consecutiveFlatBounces++;
-        } else {
-            consecutiveFlatBounces = 0;
-        }
+        if (!detectAndFixCornerTrap()) {
+            // NEW: Anti-clipping safety nudge to make sure the ball stays in front of the paddle
+            ball.x = computer.x - ball.radius;
+            ball.speedX = -Math.abs(ball.speedX); // Force direction left
+            
+            if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
+            else consecutiveFlatBounces = 0;
 
-        if (consecutiveFlatBounces >= 2) {
-            ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
-            consecutiveFlatBounces = 0;
-        } else {
-            let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
-            ball.speedY = collidePoint * 7;
+            if (consecutiveFlatBounces >= 2) {
+                ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
+                consecutiveFlatBounces = 0;
+            } else {
+                let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
+                ball.speedY = collidePoint * 7;
+            }
         }
         lastHitBy = "computer"; 
     }
@@ -272,9 +299,13 @@ function update() {
         if (p.alpha <= 0) particles.splice(i, 1); 
     }
 
-    // 9. Regular Goal Scoring
-    if (ball.x - ball.radius < 0) resolveRally("computer");
-    else if (ball.x + ball.radius > canvas.width) resolveRally("player");
+    // 9. Regular Goal Scoring & NEW Out-of-Bounds Clipping Fail-safes
+    // If the ball goes completely past a paddle structure, it should trigger a point instantly
+    if (ball.x < 0 || ball.x - ball.radius < player.x) {
+        resolveRally("computer");
+    } else if (ball.x > canvas.width || ball.x + ball.radius > computer.x + computer.width) {
+        resolveRally("player");
+    }
 }
 
 // --- Render Everything ---
@@ -290,8 +321,6 @@ function render() {
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
     drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
-    
-    // NEW: Small test case instructions text labeled nicely at the bottom right
     drawText("(Z) Trigger trap test", canvas.width - 240, canvas.height - 25, "#333", "16px");
 
     // Draw Ghost
