@@ -31,16 +31,11 @@ const computer = {
     score: 0,
     color: "#FFF",
     
-    // Proficiency levels (0 to 9)
-    speedLevel: 4,     // Default starting speed level (Medium)
-    reactionLevel: 4   // Default starting reaction level (Medium)
+    speedLevel: 4,     
+    reactionLevel: 4   
 };
 
-// Arrays to map 0-9 levels to actual physics values
-// 0 = completely motionless (0 speed), 9 = unbeatable (7.5 speed)
 const speedMapping = [0, 2.0, 3.0, 3.8, 4.5, 5.2, 5.8, 6.4, 7.0, 7.5];
-
-// 0 = completely motionless (massive deadzone), 9 = hyper-precise (0 deadzone)
 const reactionMapping = [200, 50, 40, 30, 20, 15, 10, 5, 2, 0];
 
 // --- Volleyball / Side-Out Scoring State ---
@@ -84,19 +79,33 @@ function createExplosion(x, y) {
     }
 }
 
-// --- Input Tracking & Proficiency Tuning ---
+// NEW: Function to reset the entire game state back to zero
+function startNewGame() {
+    player.score = 0;
+    computer.score = 0;
+    particles = []; // Clear any active explosions
+    randomizeObstacles();
+    currentServer = Math.random() > 0.5 ? "player" : "computer"; // Re-roll the server
+    resetBall();
+}
+
+// --- Input Tracking ---
 const keysPressed = {};
 
 window.addEventListener('keydown', (e) => {
     keysPressed[e.key] = true;
 
-    // Handle Speed tuning (S or s key)
+    // Handle Speed tuning (S key)
     if (e.key === 's' || e.key === 'S') {
         computer.speedLevel = (computer.speedLevel + 1) % 10;
     }
-    // Handle Reaction tuning (R or r key)
+    // Handle Reaction tuning (R key)
     if (e.key === 'r' || e.key === 'R') {
         computer.reactionLevel = (computer.reactionLevel + 1) % 10;
+    }
+    // NEW: Handle New Game / Score Reset (N key)
+    if (e.key === 'n' || e.key === 'N') {
+        startNewGame();
     }
 });
 
@@ -165,13 +174,11 @@ function update() {
     if (keysPressed['ArrowUp'] && player.y > 0) player.y -= player.speed;
     if (keysPressed['ArrowDown'] && player.y < canvas.height - player.height) player.y += player.speed;
 
-    // 2. Computer AI Movement (Dynamically controlled by S and R settings)
+    // 2. Computer AI Movement
     let currentSpeed = speedMapping[computer.speedLevel];
     let currentDeadZone = reactionMapping[computer.reactionLevel];
-
     let computerCenter = computer.y + (computer.height / 2);
     
-    // Only move if the ball breaks past the selected reaction deadzone buffer
     if (computerCenter < ball.y - currentDeadZone) {
         computer.y += currentSpeed;
     } else if (computerCenter > ball.y + currentDeadZone) {
@@ -251,9 +258,12 @@ function render() {
     drawText(playerText, canvas.width / 4, 60, "#FFF");
     drawText(computerText, 3 * canvas.width / 4, 60, "#FFF");
 
-    // NEW: Render the (S)peed and (R)eaction proficiency meters underneath the CPU score
+    // Proficiency meters
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
+
+    // NEW: Text instruction to let the user know they can restart
+    drawText("Press 'N' for New Game", 25, canvas.height - 20, "#555", "12px");
 
     // Obstacles
     obstacles.forEach(obs => {
