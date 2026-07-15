@@ -44,28 +44,35 @@ let lastHitBy = null;
 // --- Single Ghost Obstacle Configuration ---
 const ghost = {
     x: canvas.width / 2 - 15,
-    y: canvas.height / 2 - 15,
+    y: 0,
     width: 30,
     height: 35,
     active: true,
     
-    // Movement constraints (Safe zone boundaries)
     topLimit: 20,
-    bottomLimit: canvas.height - 55,
+    bottomLimit: 100,
     timeElapsed: 0
 };
 
 let particles = [];
 
-// Randomizes the range of travel every 5 seconds, avoiding the center serve path initially
+// NEW: Forces the ghost into either the top hemisphere or bottom hemisphere completely
 function randomizeGhostPath() {
     const padding = 20;
-    const centerZoneStart = (canvas.height / 2) - 60; // 140px
-    const centerZoneEnd = (canvas.height / 2) + 60;   // 260px
+    const centerZoneStart = (canvas.height / 2) - 60; // 140px (Safe line from top)
+    const centerZoneEnd = (canvas.height / 2) + 60;   // 260px (Safe line from bottom)
 
-    // Choose random turning limits
-    ghost.topLimit = Math.random() * (centerZoneStart - padding - ghost.height) + padding;
-    ghost.bottomLimit = Math.random() * (canvas.height - padding - ghost.height - centerZoneEnd) + centerZoneEnd;
+    // Flip a coin to choose whether the ghost patrols the TOP half or BOTTOM half
+    if (Math.random() > 0.5) {
+        // Patrol Zone: TOP half only
+        ghost.topLimit = padding;
+        ghost.bottomLimit = Math.random() * (centerZoneStart - padding - ghost.height) + padding;
+    } else {
+        // Patrol Zone: BOTTOM half only
+        ghost.topLimit = Math.random() * (canvas.height - padding - ghost.height - centerZoneEnd) + centerZoneEnd;
+        ghost.bottomLimit = canvas.height - padding - ghost.height;
+    }
+    
     ghost.active = true;
 }
 
@@ -118,16 +125,13 @@ function drawCircle(x, y, r, color) {
     ctx.fill();
 }
 
-// Retro Pixel Art Ghost Renderer
 function drawGhost(x, y, w, h) {
     ctx.fillStyle = "#FF3333";
     
-    // Head rounded cap
     ctx.beginPath();
     ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0, false);
     ctx.lineTo(x + w, y + h);
     
-    // Ghost skirt ripples
     ctx.lineTo(x + w - (w * 0.25), y + h - 5);
     ctx.lineTo(x + w - (w * 0.5), y + h);
     ctx.lineTo(x + (w * 0.25), y + h - 5);
@@ -135,7 +139,6 @@ function drawGhost(x, y, w, h) {
     ctx.closePath();
     ctx.fill();
 
-    // Pixelated Eyes
     ctx.fillStyle = "#FFF";
     ctx.fillRect(x + 6, y + 8, 4, 6);
     ctx.fillRect(x + 18, y + 8, 4, 6);
@@ -207,12 +210,11 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Ghost Movement Logic (Exactly 2 seconds edge-to-edge via Math.sin)
-    // 1 frame = 1/60th of a second. A full oscillation (up and back) takes 4 seconds.
+    // 5. Ghost Movement Logic (Guaranteed 2 seconds edge-to-edge)
     ghost.timeElapsed += (1 / 60); 
-    let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; // Normalizes value between 0 and 1
+    let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
     
-    // Interpolate position dynamically between its generated constraints
+    // Smoothly pacing within its assigned, safe boundaries
     ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
 
     // 6. Paddle Collisions
