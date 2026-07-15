@@ -55,13 +55,18 @@ const ghost = {
     
     topLimit: 10,
     bottomLimit: canvas.height - 45,
-    timeElapsed: 0
+    timeElapsed: 0,
+    
+    // NEW: Color cycling properties
+    colors: ["#FF3333", "#FFFFFF", "#3333FF"], // Red, White, Blue hex codes
+    colorIndex: 0,
+    wasMovingDown: true // Tracks previous frame direction to detect edge turns
 };
 
 let particles = [];
 let ghostTimeout = null; 
 
-function createExplosion(x, y) {
+function createExplosion(x, y, color) {
     for (let i = 0; i < 20; i++) {
         particles.push({
             x: x,
@@ -69,7 +74,8 @@ function createExplosion(x, y) {
             vx: (Math.random() - 0.5) * 8,
             vy: (Math.random() - 0.5) * 8,
             radius: Math.random() * 4 + 2,
-            alpha: 1
+            alpha: 1,
+            color: color // Explodes with the ghost's current active color
         });
     }
 }
@@ -114,7 +120,8 @@ function drawCircle(x, y, r, color) {
 }
 
 function drawGhost(x, y, w, h) {
-    ctx.fillStyle = "#FF3333";
+    // UPDATED: Dynamically pulls color from the color palette array
+    ctx.fillStyle = ghost.colors[ghost.colorIndex];
     
     ctx.beginPath();
     ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0, false);
@@ -127,10 +134,12 @@ function drawGhost(x, y, w, h) {
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#FFF";
+    // Ghost Eyes (White eyeballs, dark blue pupil)
+    // If the ghost is currently white, make the eyeballs light gray so they remain visible
+    ctx.fillStyle = (ghost.colorIndex === 1) ? "#DDD" : "#FFF";
     ctx.fillRect(x + 6, y + 8, 4, 6);
     ctx.fillRect(x + 18, y + 8, 4, 6);
-    ctx.fillStyle = "#00F";
+    ctx.fillStyle = "#002";
     ctx.fillRect(x + 6, y + 10, 2, 4);
     ctx.fillRect(x + 18, y + 10, 2, 4);
 }
@@ -235,17 +244,29 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Ghost Movement Logic
+    // 5. Ghost Movement & Color Cycling
     ghost.timeElapsed += (1 / 60); 
     let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
-    ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
+    
+    // Calculate new position
+    let nextY = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
+    
+    // NEW: Direction edge-trigger checker
+    // Compares if moving down in the previous frame vs this frame
+    let isMovingDownNow = (nextY > ghost.y);
+    if (ghost.wasMovingDown !== isMovingDownNow) {
+        // Direction shifted! Cycle to the next color index (0 -> 1 -> 2 -> 0)
+        ghost.colorIndex = (ghost.colorIndex + 1) % ghost.colors.length;
+    }
+    
+    ghost.y = nextY;
+    ghost.wasMovingDown = isMovingDownNow; // Lock frame state
 
     // 6. Paddle Collisions & Anti-Trap Execution
     if (collision(ball, player)) {
         if (!detectAndFixCornerTrap()) {
-            // NEW: Anti-clipping safety nudge to make sure the ball stays in front of the paddle
             ball.x = player.x + player.width + ball.radius;
-            ball.speedX = Math.abs(ball.speedX); // Force direction right
+            ball.speedX = Math.abs(ball.speedX); 
             
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
             else consecutiveFlatBounces = 0;
@@ -262,9 +283,8 @@ function update() {
     }
     else if (collision(ball, computer)) {
         if (!detectAndFixCornerTrap()) {
-            // NEW: Anti-clipping safety nudge to make sure the ball stays in front of the paddle
             ball.x = computer.x - ball.radius;
-            ball.speedX = -Math.abs(ball.speedX); // Force direction left
+            ball.speedX = -Math.abs(ball.speedX); 
             
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
             else consecutiveFlatBounces = 0;
@@ -283,7 +303,7 @@ function update() {
     // 7. Ghost Obstacle Collision
     if (ghost.active && collision(ball, ghost)) {
         ghost.active = false; 
-        createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2);
+        createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2, ghost.colors[ghost.colorIndex]);
         
         if (lastHitBy === "player") resolveRally("computer");
         else if (lastHitBy === "computer") resolveRally("player");
@@ -299,8 +319,7 @@ function update() {
         if (p.alpha <= 0) particles.splice(i, 1); 
     }
 
-    // 9. Regular Goal Scoring & NEW Out-of-Bounds Clipping Fail-safes
-    // If the ball goes completely past a paddle structure, it should trigger a point instantly
+    // 9. Regular Goal Scoring
     if (ball.x < 0 || ball.x - ball.radius < player.x) {
         resolveRally("computer");
     } else if (ball.x > canvas.width || ball.x + ball.radius > computer.x + computer.width) {
@@ -330,7 +349,8 @@ function render() {
 
     // Particles
     particles.forEach(p => {
-        ctx.fillStyle = `rgba(255, 100, 0, ${p.alpha})`;
+        // Pulls particle color dynamically to match the color of the ghost when it exploded
+        ctx.fillStyle = p.color.replace(")", `, ${p.alpha})`).replace("#FF3333", `rgba(255, 51, 51, ${p.alpha})`).replace("#FFFFFF", `rgba(255, 255, 255, ${p.alpha})`).replace("#3333FF", `rgba(51, 51, 255, ${p.alpha})`);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fill();
