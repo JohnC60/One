@@ -47,37 +47,16 @@ const ghost = {
     y: 0,
     width: 30,
     height: 35,
-    active: true,
+    active: false, // Starts false, turned on 1 second after serving
     
-    topLimit: 20,
-    bottomLimit: 100,
+    // Bounds for full-length travel (with 10px padding from top/bottom walls)
+    topLimit: 10,
+    bottomLimit: canvas.height - 45,
     timeElapsed: 0
 };
 
 let particles = [];
-
-// NEW: Forces the ghost into either the top hemisphere or bottom hemisphere completely
-function randomizeGhostPath() {
-    const padding = 20;
-    const centerZoneStart = (canvas.height / 2) - 60; // 140px (Safe line from top)
-    const centerZoneEnd = (canvas.height / 2) + 60;   // 260px (Safe line from bottom)
-
-    // Flip a coin to choose whether the ghost patrols the TOP half or BOTTOM half
-    if (Math.random() > 0.5) {
-        // Patrol Zone: TOP half only
-        ghost.topLimit = padding;
-        ghost.bottomLimit = Math.random() * (centerZoneStart - padding - ghost.height) + padding;
-    } else {
-        // Patrol Zone: BOTTOM half only
-        ghost.topLimit = Math.random() * (canvas.height - padding - ghost.height - centerZoneEnd) + centerZoneEnd;
-        ghost.bottomLimit = canvas.height - padding - ghost.height;
-    }
-    
-    ghost.active = true;
-}
-
-randomizeGhostPath();
-setInterval(randomizeGhostPath, 5000);
+let ghostTimeout = null; // Holds the 1-second delay timer reference
 
 function createExplosion(x, y) {
     for (let i = 0; i < 20; i++) {
@@ -96,7 +75,6 @@ function startNewGame() {
     player.score = 0;
     computer.score = 0;
     particles = []; 
-    randomizeGhostPath();
     currentServer = Math.random() > 0.5 ? "player" : "computer"; 
     resetBall();
 }
@@ -165,6 +143,15 @@ function resetBall() {
     ball.speedX = (currentServer === "player") ? 5 : -5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
     lastHitBy = null; 
+
+    // Clear any existing delayed timer so they don't stack up
+    clearTimeout(ghostTimeout);
+    ghost.active = false; 
+
+    // NEW: Activate the ghost exactly 1 second (1000 milliseconds) after serve
+    ghostTimeout = setTimeout(() => {
+        ghost.active = true;
+    }, 1000);
 }
 
 function collision(b, box) {
@@ -210,11 +197,9 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Ghost Movement Logic (Guaranteed 2 seconds edge-to-edge)
+    // 5. Ghost Movement Logic (Continuous full-length pacing, 2s edge-to-edge)
     ghost.timeElapsed += (1 / 60); 
     let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
-    
-    // Smoothly pacing within its assigned, safe boundaries
     ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
 
     // 6. Paddle Collisions
@@ -231,7 +216,7 @@ function update() {
         lastHitBy = "computer"; 
     }
 
-    // 7. Ghost Obstacle Collision
+    // 7. Ghost Obstacle Collision (Only checked when active)
     if (ghost.active && collision(ball, ghost)) {
         ghost.active = false; 
         createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2);
@@ -269,7 +254,7 @@ function render() {
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
     drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
 
-    // Draw Ghost
+    // Draw Ghost (Only renders if active)
     if (ghost.active) {
         drawGhost(ghost.x, ghost.y, ghost.width, ghost.height);
     }
