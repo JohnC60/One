@@ -1,259 +1,79 @@
-const canvas = document.getElementById('pongCanvas');
-const ctx = canvas.getContext('2d');
-
-// --- Game Objects ---
-
-const ball = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    radius: 8,
-    speedX: 5,
-    speedY: 5,
-    color: "#FFF"
-};
-
-const player = {
-    x: 10,
-    y: canvas.height / 2 - 50,
-    width: 10,
-    height: 100,
-    score: 0,
-    color: "#FFF",
-    speed: 7
-};
-
-const computer = {
-    x: canvas.width - 20,
-    y: canvas.height / 2 - 50,
-    width: 10,
-    height: 100,
-    score: 0,
-    color: "#FFF",
-    speed: 4.5
-};
-
-// --- Volleyball / Side-Out Scoring State ---
-// "player" or "computer". First server is chosen randomly.
-let currentServer = Math.random() > 0.5 ? "player" : "computer"; 
-let lastHitBy = null; 
-
-// --- Obstacles & Explosion Particles ---
-const obstacles = [
-    { x: canvas.width / 2 - 15, y: 0, width: 30, height: 30, active: true },
-    { x: canvas.width / 2 - 15, y: 0, width: 30, height: 30, active: true }
-];
-
-let particles = [];
-
-function randomizeObstacles() {
-    obstacles[0].y = Math.random() * (canvas.height / 2 - 60) + 20;
-    obstacles[0].active = true;
-
-    obstacles[1].y = Math.random() * (canvas.height / 2 - 60) + (canvas.height / 2) + 20;
-    obstacles[1].active = true;
+/* Reset and global dark arcade theme */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 
-randomizeObstacles();
-setInterval(randomizeObstacles, 5000);
-
-function createExplosion(x, y) {
-    for (let i = 0; i < 20; i++) {
-        particles.push({
-            x: x,
-            y: y,
-            vx: (Math.random() - 0.5) * 8,
-            vy: (Math.random() - 0.5) * 8,
-            radius: Math.random() * 4 + 2,
-            alpha: 1
-        });
-    }
+body {
+    background-color: #111111;
+    color: #e0e0e0;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    user-select: none;
 }
 
-// --- Input Tracking ---
-const keysPressed = {};
-window.addEventListener('keydown', (e) => keysPressed[e.key] = true);
-window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
-
-// --- Helper Drawing Functions ---
-function drawRect(x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, w, h);
+#game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
-function drawCircle(x, y, r, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2, false);
-    ctx.closePath();
-    ctx.fill();
+h1 {
+    font-size: 24px;
+    letter-spacing: 4px;
+    margin-bottom: 15px;
+    color: #ffffff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
-function drawNet() {
-    for (let i = 0; i <= canvas.height; i += 15) {
-        drawRect(canvas.width / 2 - 1, i, 2, 10, "#444"); 
-    }
+/* Perfect retro canvas styling */
+canvas {
+    background-color: #050505;
+    border: 4px solid #ffffff;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+    image-rendering: pixelated;
+    display: block;
 }
 
-function drawText(text, x, y, color) {
-    ctx.fillStyle = color;
-    ctx.font = "45px 'Courier New'";
-    ctx.fillText(text, x, y);
+/* Under-canvas dashboard */
+#dashboard {
+    margin-top: 15px;
+    width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border-top: 2px dashed #444;
 }
 
-function resetBall() {
-    ball.x = canvas.width / 2;
-    ball.y = canvas.height / 2;
-    
-    // The ball is served FROM the side of the current server
-    ball.speedX = (currentServer === "player") ? 5 : -5; 
-    ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
-    
-    lastHitBy = null; 
+.control-row {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
 }
 
-// --- Collision Detection ---
-function collision(b, box) {
-    return b.x + b.radius > box.x && 
-           b.x - b.radius < box.x + box.width && 
-           b.y + b.radius > box.y && 
-           b.y - b.radius < box.y + box.height;
+.control-item {
+    font-size: 14px;
+    color: #888888;
 }
 
-// --- Volleyball Resolution Logic ---
-// Called when a rally ends. Takes the winner of the rally ("player" or "computer")
-function resolveRally(rallyWinner) {
-    if (currentServer === rallyWinner) {
-        // Server won the rally -> Earns a point!
-        if (rallyWinner === "player") player.score++;
-        else computer.score++;
-    } else {
-        // Receiver won the rally -> No point, side-out! They become the new server.
-        currentServer = rallyWinner;
-    }
-    resetBall();
+.debug-item {
+    color: #ff5555;
+    opacity: 0.8;
 }
 
-// --- Game Logic Update ---
-function update() {
-    // 1. Player Paddle Movement
-    if (keysPressed['ArrowUp'] && player.y > 0) player.y -= player.speed;
-    if (keysPressed['ArrowDown'] && player.y < canvas.height - player.height) player.y += player.speed;
-
-    // 2. Computer AI Movement
-    let computerCenter = computer.y + (computer.height / 2);
-    if (computerCenter < ball.y - 15) computer.y += computer.speed;
-    else if (computerCenter > ball.y + 15) computer.y -= computer.speed;
-
-    if (computer.y < 0) computer.y = 0;
-    if (computer.y > canvas.height - computer.height) computer.y = canvas.height - computer.height;
-
-    // 3. Ball Movement
-    ball.x += ball.speedX;
-    ball.y += ball.speedY;
-
-    // 4. Ball Collision with Top/Bottom Walls
-    if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
-        ball.speedY = -ball.speedY;
-    }
-
-    // 5. Paddle Collisions & Last Hit Tracking
-    if (collision(ball, player)) {
-        ball.speedX = -ball.speedX;
-        let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
-        ball.speedY = collidePoint * 7;
-        lastHitBy = "player"; 
-    }
-    else if (collision(ball, computer)) {
-        ball.speedX = -ball.speedX;
-        let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
-        ball.speedY = collidePoint * 7;
-        lastHitBy = "computer"; 
-    }
-
-    // 6. Obstacle Collisions (Missed Ball / Fault Logic)
-    obstacles.forEach(obs => {
-        if (obs.active && collision(ball, obs)) {
-            obs.active = false; 
-            createExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2);
-            
-            // If you hit the obstacle, the OTHER player wins the rally
-            if (lastHitBy === "player") {
-                resolveRally("computer");
-            } else if (lastHitBy === "computer") {
-                resolveRally("player");
-            } else {
-                // Edge case: Ball hits obstacle before anyone touches it on a fresh serve.
-                // The server faulted, so the receiver wins the rally.
-                resolveRally(currentServer === "player" ? "computer" : "player");
-            }
-        }
-    });
-
-    // 7. Particle Updates
-    for (let i = particles.length - 1; i >= 0; i--) {
-        let p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.alpha -= 0.02; 
-        if (p.alpha <= 0) {
-            particles.splice(i, 1); 
-        }
-    }
-
-    // 8. Regular Goal Scoring (Rally wins)
-    if (ball.x - ball.radius < 0) {
-        // Ball went past player -> Computer wins the rally
-        resolveRally("computer");
-    } else if (ball.x + ball.radius > canvas.width) {
-        // Ball went past computer -> Player wins the rally
-        resolveRally("player");
-    }
+kbd {
+    background-color: #333;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #555;
+    font-family: inherit;
+    font-weight: bold;
 }
-
-// --- Render Everything ---
-function render() {
-    drawRect(0, 0, canvas.width, canvas.height, "#000");
-
-    drawNet();
-    
-    // Highlight the current server's score with an asterisk (*) so players know who can score
-    let playerText = player.score + (currentServer === "player" ? "*" : "");
-    let computerText = computer.score + (currentServer === "computer" ? "*" : "");
-    
-    drawText(playerText, canvas.width / 4, 60, "#FFF");
-    drawText(computerText, 3 * canvas.width / 4, 60, "#FFF");
-
-    obstacles.forEach(obs => {
-        if (obs.active) {
-            drawRect(obs.x, obs.y, obs.width, obs.height, "#FF3333");
-            drawRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10, "#A00000");
-        }
-    });
-
-    particles.forEach(p => {
-        ctx.fillStyle = `rgba(255, 100, 0, ${p.alpha})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    // Make the server's paddle glow slightly golden/yellow to visually track possession
-    let playerPaddleColor = (currentServer === "player") ? "#FFD700" : player.color;
-    let computerPaddleColor = (currentServer === "computer") ? "#FFD700" : computer.color;
-
-    drawRect(player.x, player.y, player.width, player.height, playerPaddleColor);
-    drawRect(computer.x, computer.y, computer.width, computer.height, computerPaddleColor);
-    drawCircle(ball.x, ball.y, ball.radius, ball.color);
-}
-
-// --- Main Game Loop ---
-function gameLoop() {
-    update();
-    render();
-    requestAnimationFrame(gameLoop);
-}
-
-// Initial ball setup based on the starting server
-resetBall();
-gameLoop();
-    
