@@ -105,46 +105,66 @@ function playTone(startFreq, endFreq, type, duration) {
 }
 
 function playPacmanDeathSound() {
-    // 1. Initialize the Audio Context
+    // 1. Create the audio context and main gain control
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
     const ctx = new AudioContext();
-
-    // 2. Create nodes (Oscillator for pitch, Gain for volume)
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    // 3. Configure the retro waveform
-    osc.type = 'triangle'; 
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    const mainGain = ctx.createGain();
+    mainGain.connect(ctx.destination);
 
     const startTime = ctx.currentTime;
-    
-    // 4. Mimic the downward pitch sweep
-    // The sound lasts about 1.2 seconds, sweeping from ~500Hz down to ~60Hz
-    osc.frequency.setValueAtTime(500, startTime);
-    osc.frequency.exponentialRampToValueAtTime(60, startTime + 1.2);
 
-    // 5. Create the iconic "wobble" using rapid volume drops
-    const steps = 11; // Number of distinct tone drops in the classic audio
-    const stepDuration = 1.2 / steps;
+    // --- PHASE 1: The Falling Sweep (0.0s to ~1.2s) ---
+    // The classic sound uses a raw sawtooth or triangle wave to mimic the arcade chip
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'triangle'; 
 
-    for (let i = 0; i < steps; i++) {
-        const stepTime = startTime + (i * stepDuration);
-        
-        // Rapidly drop and raise volume at each step to create the segmented gap sound
-        gainNode.gain.setValueAtTime(0.3, stepTime);
-        gainNode.gain.setValueAtTime(0.01, stepTime + (stepDuration * 0.75));
+    osc1.connect(gain1);
+    gain1.connect(mainGain);
+
+    // Sequence the downward steps of the sweep
+    const sweepDuration = 1.2;
+    const steps = 11;
+    let startFreq = 900;
+    let endFreq = 200;
+
+    for (let i = 0; i <= steps; i++) {
+        const stepTime = startTime + (i * (sweepDuration / steps));
+        const currentFreq = startFreq - (i * ((startFreq - endFreq) / steps));
+        // Use setValueAtTime to create a discrete, stepping 8-bit sound variation
+        osc1.frequency.setValueAtTime(currentFreq, stepTime);
     }
 
-    // 6. Smoothly fade out the final "thud" segment
-    gainNode.gain.setValueAtTime(0.3, startTime + 1.1);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
+    // Smooth volume fade out for the sweep phase
+    gain1.gain.setValueAtTime(0.15, startTime);
+    gain1.gain.linearRampToValueAtTime(0.0, startTime + sweepDuration);
 
-    // 7. Execute and auto-cleanup
-    osc.start(startTime);
-    osc.stop(startTime + 1.2);
+    osc1.start(startTime);
+    osc1.stop(startTime + sweepDuration);
+
+    // --- PHASE 2: The "Bloop Bloop" Warping Outro (~1.2s to 1.7s) ---
+    // These are 4 distinct low-pitched pulses at the very end
+    const bloopTimes = [1.2, 1.32, 1.44, 1.56];
+    const bloopFreqs = [120, 90, 70, 50]; // Dropping down into nothingness
+
+    bloopTimes.forEach((time, index) => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(bloopFreqs[index], startTime + time);
+        
+        // Quick volume envelope for each burst
+        gain2.gain.setValueAtTime(0.0, startTime + time);
+        gain2.gain.linearRampToValueAtTime(0.15, startTime + time + 0.02);
+        gain2.gain.linearRampToValueAtTime(0.0, startTime + time + 0.08);
+        
+        osc2.connect(gain2);
+        gain2.connect(mainGain);
+        
+        osc2.start(startTime + time);
+        osc2.stop(startTime + time + 0.1);
+    });
 }
 
 function playWosh() {
