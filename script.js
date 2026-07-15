@@ -41,22 +41,24 @@ const reactionMapping = [200, 50, 40, 30, 20, 15, 10, 5, 2, 0];
 let currentServer = Math.random() > 0.5 ? "player" : "computer"; 
 let lastHitBy = null; 
 
+// --- Straight Line Trap Prevention Tracking ---
+let consecutiveFlatBounces = 0;
+
 // --- Single Ghost Obstacle Configuration ---
 const ghost = {
     x: canvas.width / 2 - 15,
     y: 0,
     width: 30,
     height: 35,
-    active: false, // Starts false, turned on 1 second after serving
+    active: false, 
     
-    // Bounds for full-length travel (with 10px padding from top/bottom walls)
     topLimit: 10,
     bottomLimit: canvas.height - 45,
     timeElapsed: 0
 };
 
 let particles = [];
-let ghostTimeout = null; // Holds the 1-second delay timer reference
+let ghostTimeout = null; 
 
 function createExplosion(x, y) {
     for (let i = 0; i < 20; i++) {
@@ -86,6 +88,14 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 's' || e.key === 'S') computer.speedLevel = (computer.speedLevel + 1) % 10;
     if (e.key === 'r' || e.key === 'R') computer.reactionLevel = (computer.reactionLevel + 1) % 10;
     if (e.key === 'n' || e.key === 'N') startNewGame();
+    
+    // NEW: Handle Straight-Line Test Case (Z key)
+    if (e.key === 'z' || e.key === 'Z') {
+        ball.y = canvas.height - ball.radius - 2; // Snap right above the bottom wall
+        ball.speedY = 0;                          // Completely flat bounce trajectory
+        ball.speedX = (ball.speedX > 0) ? 5 : -5;  // Keep the current horizontal momentum
+        consecutiveFlatBounces = 0;                // Reset counter for the test sequence
+    }
 });
 window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
 
@@ -143,12 +153,11 @@ function resetBall() {
     ball.speedX = (currentServer === "player") ? 5 : -5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
     lastHitBy = null; 
+    consecutiveFlatBounces = 0; // Reset tracking on fresh serve
 
-    // Clear any existing delayed timer so they don't stack up
     clearTimeout(ghostTimeout);
     ghost.active = false; 
 
-    // NEW: Activate the ghost exactly 1 second (1000 milliseconds) after serve
     ghostTimeout = setTimeout(() => {
         ghost.active = true;
     }, 1000);
@@ -197,26 +206,54 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Ghost Movement Logic (Continuous full-length pacing, 2s edge-to-edge)
+    // 5. Ghost Movement Logic
     ghost.timeElapsed += (1 / 60); 
     let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
     ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
 
-    // 6. Paddle Collisions
+    // 6. Paddle Collisions & Flat Line Checks
     if (collision(ball, player)) {
         ball.speedX = -ball.speedX;
-        let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
-        ball.speedY = collidePoint * 7;
+        
+        // Check if the ball is moving roughly horizontally (flat line threshold)
+        if (Math.abs(ball.speedY) < 0.2) {
+            consecutiveFlatBounces++;
+        } else {
+            consecutiveFlatBounces = 0;
+        }
+
+        // NEW: Escape protocol if trapped for more than 1 back-and-forth cycle (2 paddle hits)
+        if (consecutiveFlatBounces >= 2) {
+            // Introduce a subtle angle kick out (positive or negative spin)
+            ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
+            consecutiveFlatBounces = 0;
+        } else {
+            // Normal angle calculations
+            let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
+            ball.speedY = collidePoint * 7;
+        }
         lastHitBy = "player"; 
     }
     else if (collision(ball, computer)) {
         ball.speedX = -ball.speedX;
-        let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
-        ball.speedY = collidePoint * 7;
+        
+        if (Math.abs(ball.speedY) < 0.2) {
+            consecutiveFlatBounces++;
+        } else {
+            consecutiveFlatBounces = 0;
+        }
+
+        if (consecutiveFlatBounces >= 2) {
+            ball.speedY = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 1.5 + 0.5);
+            consecutiveFlatBounces = 0;
+        } else {
+            let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
+            ball.speedY = collidePoint * 7;
+        }
         lastHitBy = "computer"; 
     }
 
-    // 7. Ghost Obstacle Collision (Only checked when active)
+    // 7. Ghost Obstacle Collision
     if (ghost.active && collision(ball, ghost)) {
         ghost.active = false; 
         createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2);
@@ -253,8 +290,11 @@ function render() {
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
     drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
+    
+    // NEW: Small test case instructions text labeled nicely at the bottom right
+    drawText("(Z) Trigger trap test", canvas.width - 240, canvas.height - 25, "#333", "16px");
 
-    // Draw Ghost (Only renders if active)
+    // Draw Ghost
     if (ghost.active) {
         drawGhost(ghost.x, ghost.y, ghost.width, ghost.height);
     }
