@@ -255,7 +255,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'a' || e.key === 'A') {
         state.audioEnabled = !state.audioEnabled;
     }
-    // Debug Force Flat Trajectory Trap Key (Z)
+    // Debug Force Flat Trajectory Trap Key (Z) - Still functional but hidden from the HUD
     if (e.key === 'z' || e.key === 'Z') {
         state.ball.x = 400;
         state.ball.y = CANVAS_HEIGHT - BALL_SIZE - 2;
@@ -537,11 +537,11 @@ function draw() {
     ctx.fillText(`(S)peed: ${state.ai.speed}`, 500, 105);
     ctx.fillText(`(R)eaction: ${state.ai.reaction}`, 500, 125);
 
-    // Bottom Footer Controls Dashboard Panels
+    // Bottom Footer Controls Dashboard Panels (Z control removed)
     ctx.textAlign = 'center';
     ctx.fillStyle = '#666666';
     const audioStatus = state.audioEnabled ? "ON" : "OFF";
-    ctx.fillText(`▲/▼ : Move    (A)udio: ${audioStatus}    (N)ew game    (Z) Force Trap`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 15);
+    ctx.fillText(`▲/▼ : Move    (A)udio: ${audioStatus}    (N)ew game`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 15);
 }
 
 // Initial serve setup
