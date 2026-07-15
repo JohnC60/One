@@ -1,4 +1,4 @@
-/* Reset and global dark arcade theme */
+/* Reset margins, paddings, and set up retro atmosphere */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -7,73 +7,28 @@
 
 body {
     background-color: #111111;
-    color: #e0e0e0;
+    color: #ffffff;
     font-family: 'Courier New', Courier, monospace;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    height: 100vh;
+    width: 100vw;
     overflow: hidden;
     user-select: none;
 }
 
 #game-container {
     display: flex;
-    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    text-align: center;
 }
 
-h1 {
-    font-size: 24px;
-    letter-spacing: 4px;
-    margin-bottom: 15px;
-    color: #ffffff;
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-}
-
-/* Perfect retro canvas styling */
+/* Crisp pixel-art arcade screen border */
 canvas {
     background-color: #050505;
-    border: 4px solid #ffffff;
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
-    image-rendering: pixelated;
+    border: 2px solid #444444;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
     display: block;
-}
-
-/* Under-canvas dashboard */
-#dashboard {
-    margin-top: 15px;
-    width: 800px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 10px;
-    border-top: 2px dashed #444;
-}
-
-.control-row {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-}
-
-.control-item {
-    font-size: 14px;
-    color: #888888;
-}
-
-.debug-item {
-    color: #ff5555;
-    opacity: 0.8;
-}
-
-kbd {
-    background-color: #333;
-    color: #fff;
-    padding: 2px 6px;
-    border-radius: 3px;
-    border: 1px solid #555;
-    font-family: inherit;
-    font-weight: bold;
+    image-rendering: pixelated;
 }
