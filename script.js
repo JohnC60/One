@@ -33,7 +33,6 @@ const computer = {
 };
 
 // Track who touched the ball last ("player" or "computer")
-// Starts as null for a fresh serve
 let lastHitBy = null; 
 
 // --- Obstacles & Explosion Particles ---
@@ -102,9 +101,12 @@ function drawText(text, x, y, color) {
 function resetBall() {
     ball.x = canvas.width / 2;
     ball.y = canvas.height / 2;
-    ball.speedX = -ball.speedX; 
+    
+    // Serve the ball towards the side that just missed/lost the point
+    ball.speedX = (ball.speedX > 0) ? -5 : 5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
-    lastHitBy = null; // Reset last hit tracking for the new serve
+    
+    lastHitBy = null; 
 }
 
 // --- Collision Detection ---
@@ -139,32 +141,31 @@ function update() {
     }
 
     // 5. Paddle Collisions & Last Hit Tracking
-    // Check collision with human player
     if (collision(ball, player)) {
         ball.speedX = -ball.speedX;
         let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
         ball.speedY = collidePoint * 7;
-        lastHitBy = "player"; // Track P1 hit
+        lastHitBy = "player"; 
     }
-    // Check collision with computer
     else if (collision(ball, computer)) {
         ball.speedX = -ball.speedX;
         let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
         ball.speedY = collidePoint * 7;
-        lastHitBy = "computer"; // Track CPU hit
+        lastHitBy = "computer"; 
     }
 
-    // 6. Obstacle Collisions (Punish the player who touched it last)
+    // 6. Obstacle Collisions (Missed Ball Logic)
     obstacles.forEach(obs => {
         if (obs.active && collision(ball, obs)) {
             obs.active = false; 
             createExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2);
             
-            // Score penalty logic:
+            // If the ball hits an obstacle, award the point to the opponent 
+            // and treat it as a missed serve (fault)
             if (lastHitBy === "player") {
-                computer.score++; // Player hit it into the obstacle, computer gets the point
+                computer.score++;
             } else if (lastHitBy === "computer") {
-                player.score++;   // Computer hit it into the obstacle, player gets the point
+                player.score++;
             }
             
             resetBall(); 
