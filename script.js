@@ -30,7 +30,6 @@ const computer = {
     height: 100,
     score: 0,
     color: "#FFF",
-    
     speedLevel: 4,     
     reactionLevel: 4   
 };
@@ -42,29 +41,36 @@ const reactionMapping = [200, 50, 40, 30, 20, 15, 10, 5, 2, 0];
 let currentServer = Math.random() > 0.5 ? "player" : "computer"; 
 let lastHitBy = null; 
 
-// --- Obstacles & Explosion Particles ---
-const obstacles = [
-    { x: canvas.width / 2 - 15, y: 0, width: 30, height: 30, active: true },
-    { x: canvas.width / 2 - 15, y: 0, width: 30, height: 30, active: true }
-];
+// --- Single Ghost Obstacle Configuration ---
+const ghost = {
+    x: canvas.width / 2 - 15,
+    y: canvas.height / 2 - 15,
+    width: 30,
+    height: 35,
+    active: true,
+    
+    // Movement constraints (Safe zone boundaries)
+    topLimit: 20,
+    bottomLimit: canvas.height - 55,
+    timeElapsed: 0
+};
 
 let particles = [];
 
-function randomizeObstacles() {
-    const obstacleHeight = 30;
-    const padding = 20; 
-    const centerZoneStart = (canvas.height / 2) - 60; 
-    const centerZoneEnd = (canvas.height / 2) + 60;   
+// Randomizes the range of travel every 5 seconds, avoiding the center serve path initially
+function randomizeGhostPath() {
+    const padding = 20;
+    const centerZoneStart = (canvas.height / 2) - 60; // 140px
+    const centerZoneEnd = (canvas.height / 2) + 60;   // 260px
 
-    obstacles[0].y = Math.random() * (centerZoneStart - padding - obstacleHeight) + padding;
-    obstacles[0].active = true;
-
-    obstacles[1].y = Math.random() * (canvas.height - padding - obstacleHeight - centerZoneEnd) + centerZoneEnd;
-    obstacles[1].active = true;
+    // Choose random turning limits
+    ghost.topLimit = Math.random() * (centerZoneStart - padding - ghost.height) + padding;
+    ghost.bottomLimit = Math.random() * (canvas.height - padding - ghost.height - centerZoneEnd) + centerZoneEnd;
+    ghost.active = true;
 }
 
-randomizeObstacles();
-setInterval(randomizeObstacles, 5000);
+randomizeGhostPath();
+setInterval(randomizeGhostPath, 5000);
 
 function createExplosion(x, y) {
     for (let i = 0; i < 20; i++) {
@@ -83,33 +89,22 @@ function startNewGame() {
     player.score = 0;
     computer.score = 0;
     particles = []; 
-    randomizeObstacles();
+    randomizeGhostPath();
     currentServer = Math.random() > 0.5 ? "player" : "computer"; 
     resetBall();
 }
 
 // --- Input Tracking ---
 const keysPressed = {};
-
 window.addEventListener('keydown', (e) => {
     keysPressed[e.key] = true;
-
-    if (e.key === 's' || e.key === 'S') {
-        computer.speedLevel = (computer.speedLevel + 1) % 10;
-    }
-    if (e.key === 'r' || e.key === 'R') {
-        computer.reactionLevel = (computer.reactionLevel + 1) % 10;
-    }
-    if (e.key === 'n' || e.key === 'N') {
-        startNewGame();
-    }
+    if (e.key === 's' || e.key === 'S') computer.speedLevel = (computer.speedLevel + 1) % 10;
+    if (e.key === 'r' || e.key === 'R') computer.reactionLevel = (computer.reactionLevel + 1) % 10;
+    if (e.key === 'n' || e.key === 'N') startNewGame();
 });
+window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
 
-window.addEventListener('keyup', (e) => {
-    keysPressed[e.key] = false;
-});
-
-// --- Helper Drawing Functions ---
+// --- Drawing Helper Functions ---
 function drawRect(x, y, w, h, color) {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
@@ -121,6 +116,32 @@ function drawCircle(x, y, r, color) {
     ctx.arc(x, y, r, 0, Math.PI * 2, false);
     ctx.closePath();
     ctx.fill();
+}
+
+// Retro Pixel Art Ghost Renderer
+function drawGhost(x, y, w, h) {
+    ctx.fillStyle = "#FF3333";
+    
+    // Head rounded cap
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0, false);
+    ctx.lineTo(x + w, y + h);
+    
+    // Ghost skirt ripples
+    ctx.lineTo(x + w - (w * 0.25), y + h - 5);
+    ctx.lineTo(x + w - (w * 0.5), y + h);
+    ctx.lineTo(x + (w * 0.25), y + h - 5);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pixelated Eyes
+    ctx.fillStyle = "#FFF";
+    ctx.fillRect(x + 6, y + 8, 4, 6);
+    ctx.fillRect(x + 18, y + 8, 4, 6);
+    ctx.fillStyle = "#00F";
+    ctx.fillRect(x + 6, y + 10, 2, 4);
+    ctx.fillRect(x + 18, y + 10, 2, 4);
 }
 
 function drawNet() {
@@ -138,14 +159,11 @@ function drawText(text, x, y, color, fontSize = "45px") {
 function resetBall() {
     ball.x = canvas.width / 2;
     ball.y = canvas.height / 2;
-    
     ball.speedX = (currentServer === "player") ? 5 : -5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
-    
     lastHitBy = null; 
 }
 
-// --- Collision Detection ---
 function collision(b, box) {
     return b.x + b.radius > box.x && 
            b.x - b.radius < box.x + box.width && 
@@ -153,7 +171,6 @@ function collision(b, box) {
            b.y - b.radius < box.y + box.height;
 }
 
-// --- Volleyball Resolution Logic ---
 function resolveRally(rallyWinner) {
     if (currentServer === rallyWinner) {
         if (rallyWinner === "player") player.score++;
@@ -175,11 +192,8 @@ function update() {
     let currentDeadZone = reactionMapping[computer.reactionLevel];
     let computerCenter = computer.y + (computer.height / 2);
     
-    if (computerCenter < ball.y - currentDeadZone) {
-        computer.y += currentSpeed;
-    } else if (computerCenter > ball.y + currentDeadZone) {
-        computer.y -= currentSpeed;
-    }
+    if (computerCenter < ball.y - currentDeadZone) computer.y += currentSpeed;
+    else if (computerCenter > ball.y + currentDeadZone) computer.y -= currentSpeed;
 
     if (computer.y < 0) computer.y = 0;
     if (computer.y > canvas.height - computer.height) computer.y = canvas.height - computer.height;
@@ -193,7 +207,15 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Paddle Collisions & Last Hit Tracking
+    // 5. Ghost Movement Logic (Exactly 2 seconds edge-to-edge via Math.sin)
+    // 1 frame = 1/60th of a second. A full oscillation (up and back) takes 4 seconds.
+    ghost.timeElapsed += (1 / 60); 
+    let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; // Normalizes value between 0 and 1
+    
+    // Interpolate position dynamically between its generated constraints
+    ghost.y = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
+
+    // 6. Paddle Collisions
     if (collision(ball, player)) {
         ball.speedX = -ball.speedX;
         let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
@@ -207,67 +229,48 @@ function update() {
         lastHitBy = "computer"; 
     }
 
-    // 6. Obstacle Collisions
-    obstacles.forEach(obs => {
-        if (obs.active && collision(ball, obs)) {
-            obs.active = false; 
-            createExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2);
-            
-            if (lastHitBy === "player") {
-                resolveRally("computer");
-            } else if (lastHitBy === "computer") {
-                resolveRally("player");
-            } else {
-                resolveRally(currentServer === "player" ? "computer" : "player");
-            }
-        }
-    });
+    // 7. Ghost Obstacle Collision
+    if (ghost.active && collision(ball, ghost)) {
+        ghost.active = false; 
+        createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2);
+        
+        if (lastHitBy === "player") resolveRally("computer");
+        else if (lastHitBy === "computer") resolveRally("player");
+        else resolveRally(currentServer === "player" ? "computer" : "player");
+    }
 
-    // 7. Particle Updates
+    // 8. Particle Updates
     for (let i = particles.length - 1; i >= 0; i--) {
         let p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
         p.alpha -= 0.02; 
-        if (p.alpha <= 0) {
-            particles.splice(i, 1); 
-        }
+        if (p.alpha <= 0) particles.splice(i, 1); 
     }
 
-    // 8. Regular Goal Scoring
-    if (ball.x - ball.radius < 0) {
-        resolveRally("computer");
-    } else if (ball.x + ball.radius > canvas.width) {
-        resolveRally("player");
-    }
+    // 9. Regular Goal Scoring
+    if (ball.x - ball.radius < 0) resolveRally("computer");
+    else if (ball.x + ball.radius > canvas.width) resolveRally("player");
 }
 
 // --- Render Everything ---
 function render() {
     drawRect(0, 0, canvas.width, canvas.height, "#000");
-
     drawNet();
     
-    // Scores
+    // Scores & UI
     let playerText = player.score + (currentServer === "player" ? "*" : "");
     let computerText = computer.score + (currentServer === "computer" ? "*" : "");
     drawText(playerText, canvas.width / 4, 60, "#FFF");
     drawText(computerText, 3 * canvas.width / 4, 60, "#FFF");
-
-    // Proficiency meters
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
-
-    // UPDATED: Standardized clean label format matching the others
     drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
 
-    // Obstacles
-    obstacles.forEach(obs => {
-        if (obs.active) {
-            drawRect(obs.x, obs.y, obs.width, obs.height, "#FF3333");
-            drawRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10, "#A00000");
-        }
-    });
+    // Draw Ghost
+    if (ghost.active) {
+        drawGhost(ghost.x, ghost.y, ghost.width, ghost.height);
+    }
 
     // Particles
     particles.forEach(p => {
