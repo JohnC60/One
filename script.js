@@ -104,38 +104,47 @@ function playTone(startFreq, endFreq, type, duration) {
     osc.stop(audioCtx.currentTime + duration);
 }
 
-// NEW: Authentic synthesized Pac-Man "wah-wah-wah" death sequence
 function playPacmanDeathSound() {
-    if (isMuted || !audioCtx) return;
+    // 1. Initialize the Audio Context
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
 
-    const now = audioCtx.currentTime;
-    const duration = 1.2; // Total duration of the animation sweep
-    
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    
-    osc.type = "triangle"; // Triangle wave yields that warm, hollow chiptune wave
-    
-    const steps = 5;
-    for (let i = 0; i < steps; i++) {
-        let stepTime = now + (i * (duration / steps));
-        let nextStepTime = now + ((i + 1) * (duration / steps));
-        
-        let startFreq = 600 - (i * 90); // Steps down sequentially
-        let endFreq = 200 - (i * 30);
-        
-        osc.frequency.setValueAtTime(startFreq, stepTime);
-        osc.frequency.exponentialRampToValueAtTime(endFreq, nextStepTime - 0.02);
-    }
-    
-    gainNode.gain.setValueAtTime(0.3, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
-    
+    // 2. Create nodes (Oscillator for pitch, Gain for volume)
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    // 3. Configure the retro waveform
+    osc.type = 'triangle'; 
     osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
+    gainNode.connect(ctx.destination);
+
+    const startTime = ctx.currentTime;
     
-    osc.start(now);
-    osc.stop(now + duration);
+    // 4. Mimic the downward pitch sweep
+    // The sound lasts about 1.2 seconds, sweeping from ~500Hz down to ~60Hz
+    osc.frequency.setValueAtTime(500, startTime);
+    osc.frequency.exponentialRampToValueAtTime(60, startTime + 1.2);
+
+    // 5. Create the iconic "wobble" using rapid volume drops
+    const steps = 11; // Number of distinct tone drops in the classic audio
+    const stepDuration = 1.2 / steps;
+
+    for (let i = 0; i < steps; i++) {
+        const stepTime = startTime + (i * stepDuration);
+        
+        // Rapidly drop and raise volume at each step to create the segmented gap sound
+        gainNode.gain.setValueAtTime(0.3, stepTime);
+        gainNode.gain.setValueAtTime(0.01, stepTime + (stepDuration * 0.75));
+    }
+
+    // 6. Smoothly fade out the final "thud" segment
+    gainNode.gain.setValueAtTime(0.3, startTime + 1.1);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
+
+    // 7. Execute and auto-cleanup
+    osc.start(startTime);
+    osc.stop(startTime + 1.2);
 }
 
 function playWosh() {
