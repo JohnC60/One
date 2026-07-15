@@ -22,6 +22,7 @@ const player = {
     speed: 7
 };
 
+// --- Computer AI Configuration ---
 const computer = {
     x: canvas.width - 20,
     y: canvas.height / 2 - 50,
@@ -29,10 +30,21 @@ const computer = {
     height: 100,
     score: 0,
     color: "#FFF",
-    speed: 4.5
+    
+    // Proficiency levels (0 to 9)
+    speedLevel: 4,     // Default starting speed level (Medium)
+    reactionLevel: 4   // Default starting reaction level (Medium)
 };
 
-// Track who touched the ball last ("player" or "computer")
+// Arrays to map 0-9 levels to actual physics values
+// 0 = completely motionless (0 speed), 9 = unbeatable (7.5 speed)
+const speedMapping = [0, 2.0, 3.0, 3.8, 4.5, 5.2, 5.8, 6.4, 7.0, 7.5];
+
+// 0 = completely motionless (massive deadzone), 9 = hyper-precise (0 deadzone)
+const reactionMapping = [200, 50, 40, 30, 20, 15, 10, 5, 2, 0];
+
+// --- Volleyball / Side-Out Scoring State ---
+let currentServer = Math.random() > 0.5 ? "player" : "computer"; 
 let lastHitBy = null; 
 
 // --- Obstacles & Explosion Particles ---
@@ -44,10 +56,15 @@ const obstacles = [
 let particles = [];
 
 function randomizeObstacles() {
-    obstacles[0].y = Math.random() * (canvas.height / 2 - 60) + 20;
+    const obstacleHeight = 30;
+    const padding = 20; 
+    const centerZoneStart = (canvas.height / 2) - 60; 
+    const centerZoneEnd = (canvas.height / 2) + 60;   
+
+    obstacles[0].y = Math.random() * (centerZoneStart - padding - obstacleHeight) + padding;
     obstacles[0].active = true;
 
-    obstacles[1].y = Math.random() * (canvas.height / 2 - 60) + (canvas.height / 2) + 20;
+    obstacles[1].y = Math.random() * (canvas.height - padding - obstacleHeight - centerZoneEnd) + centerZoneEnd;
     obstacles[1].active = true;
 }
 
@@ -67,10 +84,25 @@ function createExplosion(x, y) {
     }
 }
 
-// --- Input Tracking ---
+// --- Input Tracking & Proficiency Tuning ---
 const keysPressed = {};
-window.addEventListener('keydown', (e) => keysPressed[e.key] = true);
-window.addEventListener('keyup', (e) => keysPressed[e.key] = false);
+
+window.addEventListener('keydown', (e) => {
+    keysPressed[e.key] = true;
+
+    // Handle Speed tuning (S or s key)
+    if (e.key === 's' || e.key === 'S') {
+        computer.speedLevel = (computer.speedLevel + 1) % 10;
+    }
+    // Handle Reaction tuning (R or r key)
+    if (e.key === 'r' || e.key === 'R') {
+        computer.reactionLevel = (computer.reactionLevel + 1) % 10;
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    keysPressed[e.key] = false;
+});
 
 // --- Helper Drawing Functions ---
 function drawRect(x, y, w, h, color) {
@@ -92,9 +124,9 @@ function drawNet() {
     }
 }
 
-function drawText(text, x, y, color) {
+function drawText(text, x, y, color, fontSize = "45px") {
     ctx.fillStyle = color;
-    ctx.font = "45px 'Courier New'";
+    ctx.font = `${fontSize} 'Courier New'`;
     ctx.fillText(text, x, y);
 }
 
@@ -102,8 +134,7 @@ function resetBall() {
     ball.x = canvas.width / 2;
     ball.y = canvas.height / 2;
     
-    // Serve the ball towards the side that just missed/lost the point
-    ball.speedX = (ball.speedX > 0) ? -5 : 5; 
+    ball.speedX = (currentServer === "player") ? 5 : -5; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
     
     lastHitBy = null; 
@@ -117,16 +148,35 @@ function collision(b, box) {
            b.y - b.radius < box.y + box.height;
 }
 
+// --- Volleyball Resolution Logic ---
+function resolveRally(rallyWinner) {
+    if (currentServer === rallyWinner) {
+        if (rallyWinner === "player") player.score++;
+        else computer.score++;
+    } else {
+        currentServer = rallyWinner;
+    }
+    resetBall();
+}
+
 // --- Game Logic Update ---
 function update() {
     // 1. Player Paddle Movement
     if (keysPressed['ArrowUp'] && player.y > 0) player.y -= player.speed;
     if (keysPressed['ArrowDown'] && player.y < canvas.height - player.height) player.y += player.speed;
 
-    // 2. Computer AI Movement
+    // 2. Computer AI Movement (Dynamically controlled by S and R settings)
+    let currentSpeed = speedMapping[computer.speedLevel];
+    let currentDeadZone = reactionMapping[computer.reactionLevel];
+
     let computerCenter = computer.y + (computer.height / 2);
-    if (computerCenter < ball.y - 15) computer.y += computer.speed;
-    else if (computerCenter > ball.y + 15) computer.y -= computer.speed;
+    
+    // Only move if the ball breaks past the selected reaction deadzone buffer
+    if (computerCenter < ball.y - currentDeadZone) {
+        computer.y += currentSpeed;
+    } else if (computerCenter > ball.y + currentDeadZone) {
+        computer.y -= currentSpeed;
+    }
 
     if (computer.y < 0) computer.y = 0;
     if (computer.y > canvas.height - computer.height) computer.y = canvas.height - computer.height;
@@ -154,21 +204,19 @@ function update() {
         lastHitBy = "computer"; 
     }
 
-    // 6. Obstacle Collisions (Missed Ball Logic)
+    // 6. Obstacle Collisions
     obstacles.forEach(obs => {
         if (obs.active && collision(ball, obs)) {
             obs.active = false; 
             createExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2);
             
-            // If the ball hits an obstacle, award the point to the opponent 
-            // and treat it as a missed serve (fault)
             if (lastHitBy === "player") {
-                computer.score++;
+                resolveRally("computer");
             } else if (lastHitBy === "computer") {
-                player.score++;
+                resolveRally("player");
+            } else {
+                resolveRally(currentServer === "player" ? "computer" : "player");
             }
-            
-            resetBall(); 
         }
     });
 
@@ -185,11 +233,9 @@ function update() {
 
     // 8. Regular Goal Scoring
     if (ball.x - ball.radius < 0) {
-        computer.score++;
-        resetBall();
+        resolveRally("computer");
     } else if (ball.x + ball.radius > canvas.width) {
-        player.score++;
-        resetBall();
+        resolveRally("player");
     }
 }
 
@@ -198,9 +244,18 @@ function render() {
     drawRect(0, 0, canvas.width, canvas.height, "#000");
 
     drawNet();
-    drawText(player.score, canvas.width / 4, 60, "#FFF");
-    drawText(computer.score, 3 * canvas.width / 4, 60, "#FFF");
+    
+    // Scores
+    let playerText = player.score + (currentServer === "player" ? "*" : "");
+    let computerText = computer.score + (currentServer === "computer" ? "*" : "");
+    drawText(playerText, canvas.width / 4, 60, "#FFF");
+    drawText(computerText, 3 * canvas.width / 4, 60, "#FFF");
 
+    // NEW: Render the (S)peed and (R)eaction proficiency meters underneath the CPU score
+    drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
+    drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
+
+    // Obstacles
     obstacles.forEach(obs => {
         if (obs.active) {
             drawRect(obs.x, obs.y, obs.width, obs.height, "#FF3333");
@@ -208,6 +263,7 @@ function render() {
         }
     });
 
+    // Particles
     particles.forEach(p => {
         ctx.fillStyle = `rgba(255, 100, 0, ${p.alpha})`;
         ctx.beginPath();
@@ -215,8 +271,12 @@ function render() {
         ctx.fill();
     });
 
-    drawRect(player.x, player.y, player.width, player.height, player.color);
-    drawRect(computer.x, computer.y, computer.width, computer.height, computer.color);
+    // Paddles & Ball
+    let playerPaddleColor = (currentServer === "player") ? "#FFD700" : player.color;
+    let computerPaddleColor = (currentServer === "computer") ? "#FFD700" : computer.color;
+
+    drawRect(player.x, player.y, player.width, player.height, playerPaddleColor);
+    drawRect(computer.x, computer.y, computer.width, computer.height, computerPaddleColor);
     drawCircle(ball.x, ball.y, ball.radius, ball.color);
 }
 
@@ -227,4 +287,5 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+resetBall();
 gameLoop();
