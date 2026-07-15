@@ -3,17 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Pong Game</title>
+    <title>Retro Volleyball-Pong & Ghost Obstacle</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-    <div class="game-container">
-        <h1>PONG</h1>
-        <canvas id="pongCanvas" width="800" height="400"></canvas>
-        <p>Use the <strong>Up / Down Arrow Keys</strong> to move your paddle.</p>
+    <div id="game-container">
+        <h1>PONG: VOLLEYBALL EDITION</h1>
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        
+        <div id="dashboard">
+            <div class="control-row">
+                <span class="control-item"><kbd>▲</kbd> / <kbd>▼</kbd> Move Paddle</span>
+                <span class="control-item" id="btn-speed"><kbd>S</kbd>peed: 5</span>
+                <span class="control-item" id="btn-react"><kbd>R</kbd>eaction: 3</span>
+            </div>
+            <div class="control-row">
+                <span class="control-item" id="btn-audio"><kbd>A</kbd>udio: ON</span>
+                <span class="control-item"><kbd>N</kbd>ew game</span>
+                <span class="control-item debug-item"><kbd>Z</kbd> Force Trap</span>
+            </div>
+        </div>
     </div>
-
     <script src="script.js"></script>
 </body>
 </html>
