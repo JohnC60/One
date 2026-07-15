@@ -79,13 +79,12 @@ function createExplosion(x, y) {
     }
 }
 
-// NEW: Function to reset the entire game state back to zero
 function startNewGame() {
     player.score = 0;
     computer.score = 0;
-    particles = []; // Clear any active explosions
+    particles = []; 
     randomizeObstacles();
-    currentServer = Math.random() > 0.5 ? "player" : "computer"; // Re-roll the server
+    currentServer = Math.random() > 0.5 ? "player" : "computer"; 
     resetBall();
 }
 
@@ -95,15 +94,12 @@ const keysPressed = {};
 window.addEventListener('keydown', (e) => {
     keysPressed[e.key] = true;
 
-    // Handle Speed tuning (S key)
     if (e.key === 's' || e.key === 'S') {
         computer.speedLevel = (computer.speedLevel + 1) % 10;
     }
-    // Handle Reaction tuning (R key)
     if (e.key === 'r' || e.key === 'R') {
         computer.reactionLevel = (computer.reactionLevel + 1) % 10;
     }
-    // NEW: Handle New Game / Score Reset (N key)
     if (e.key === 'n' || e.key === 'N') {
         startNewGame();
     }
@@ -262,8 +258,8 @@ function render() {
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
 
-    // NEW: Text instruction to let the user know they can restart
-    drawText("Press 'N' for New Game", 25, canvas.height - 20, "#555", "12px");
+    // UPDATED: Standardized clean label format matching the others
+    drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
 
     // Obstacles
     obstacles.forEach(obs => {
