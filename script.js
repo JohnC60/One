@@ -70,21 +70,19 @@ let ghostTimeout = null;
 // ==========================================
 
 let audioCtx = null;
+let isMuted = false; 
 
-// Initialize the audio context on the first user interaction (browser security policy)
 function initAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    // Resume if suspended (common in some browsers)
     if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
 }
 
-// 1. Core synthesizer player for tones (Paddles, Walls, Explosions)
 function playTone(startFreq, endFreq, type, duration) {
-    if (!audioCtx) return;
+    if (isMuted || !audioCtx) return; 
     
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -92,12 +90,10 @@ function playTone(startFreq, endFreq, type, duration) {
     osc.type = type;
     osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
     
-    // Pitch sweep/bend if an end frequency is provided
     if (endFreq !== startFreq) {
         osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + duration);
     }
     
-    // Smooth volume fade-out (prevents speaker clicking)
     gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
     
@@ -108,15 +104,47 @@ function playTone(startFreq, endFreq, type, duration) {
     osc.stop(audioCtx.currentTime + duration);
 }
 
-// 2. Specialized synthesizer for the "Wosh" (Missed Ball / Pass) using white noise
-function playWosh() {
-    if (!audioCtx) return;
+// NEW: Authentic synthesized Pac-Man "wah-wah-wah" death sequence
+function playPacmanDeathSound() {
+    if (isMuted || !audioCtx) return;
 
-    const bufferSize = audioCtx.sampleRate * 0.4; // 0.4 seconds duration
+    const now = audioCtx.currentTime;
+    const duration = 1.2; // Total duration of the animation sweep
+    
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    osc.type = "triangle"; // Triangle wave yields that warm, hollow chiptune wave
+    
+    const steps = 5;
+    for (let i = 0; i < steps; i++) {
+        let stepTime = now + (i * (duration / steps));
+        let nextStepTime = now + ((i + 1) * (duration / steps));
+        
+        let startFreq = 600 - (i * 90); // Steps down sequentially
+        let endFreq = 200 - (i * 30);
+        
+        osc.frequency.setValueAtTime(startFreq, stepTime);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, nextStepTime - 0.02);
+    }
+    
+    gainNode.gain.setValueAtTime(0.3, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    osc.start(now);
+    osc.stop(now + duration);
+}
+
+function playWosh() {
+    if (isMuted || !audioCtx) return; 
+
+    const bufferSize = audioCtx.sampleRate * 0.4; 
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     
-    // Fill buffer with random noise values
     for (let i = 0; i < bufferSize; i++) {
         data[i] = Math.random() * 2 - 1;
     }
@@ -124,13 +152,11 @@ function playWosh() {
     const noiseNode = audioCtx.createBufferSource();
     noiseNode.buffer = buffer;
 
-    // Apply a lowpass filter to make it sound like rushing air (wosh)
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(1000, audioCtx.currentTime);
     filter.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.4);
 
-    // Fade out volume smoothly
     const gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
@@ -145,8 +171,8 @@ function playWosh() {
 // ==========================================
 
 function createExplosion(x, y, color) {
-    // Play a heavy, deep retro pitch-bend explosion
-    playTone(150, 10, "sawtooth", 0.5);
+    // UPDATED: Triggers the retro Pac-man sequence on impact
+    playPacmanDeathSound();
 
     for (let i = 0; i < 20; i++) {
         particles.push({
@@ -173,11 +199,16 @@ function startNewGame() {
 // --- Input Tracking ---
 const keysPressed = {};
 window.addEventListener('keydown', (e) => {
-    initAudio(); // Initialize sound on key down
+    initAudio(); 
     keysPressed[e.key] = true;
+    
     if (e.key === 's' || e.key === 'S') computer.speedLevel = (computer.speedLevel + 1) % 10;
     if (e.key === 'r' || e.key === 'R') computer.reactionLevel = (computer.reactionLevel + 1) % 10;
     if (e.key === 'n' || e.key === 'N') startNewGame();
+    
+    if (e.key === 'a' || e.key === 'A') {
+        isMuted = !isMuted;
+    }
     
     if (e.key === 'z' || e.key === 'Z') {
         ball.y = canvas.height - ball.radius - 2; 
@@ -322,8 +353,6 @@ function update() {
     // 4. Ball Collision with Top/Bottom Walls
     if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
         ball.speedY = -ball.speedY;
-        
-        // SOUND: Wall Ricochet Thud (triangle wave, 180Hz, 0.08s)
         playTone(180, 180, "triangle", 0.08);
     }
 
@@ -347,7 +376,6 @@ function update() {
             ball.x = player.x + player.width + ball.radius;
             ball.speedX = Math.abs(ball.speedX); 
             
-            // SOUND: High-pitch "Pok" (square wave, 800Hz, 0.05s)
             playTone(800, 800, "square", 0.05);
 
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
@@ -368,7 +396,6 @@ function update() {
             ball.x = computer.x - ball.radius;
             ball.speedX = -Math.abs(ball.speedX); 
             
-            // SOUND: High-pitch "Pok" (square wave, 800Hz, 0.05s)
             playTone(800, 800, "square", 0.05);
 
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
@@ -388,8 +415,6 @@ function update() {
     // 7. Ghost Obstacle Collision
     if (ghost.active && collision(ball, ghost)) {
         ghost.active = false; 
-        
-        // SOUND: Triggered inside createExplosion
         createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2, ghost.colors[ghost.colorIndex]);
         
         if (lastHitBy === "player") resolveRally("computer");
@@ -406,13 +431,11 @@ function update() {
         if (p.alpha <= 0) particles.splice(i, 1); 
     }
 
-    // 9. Regular Goal Scoring (Rally Ends with a "Wosh" sound)
+    // 9. Regular Goal Scoring
     if (ball.x < 0 || ball.x - ball.radius < player.x) {
-        // SOUND: Rushing air missed ball
         playWosh();
         resolveRally("computer");
     } else if (ball.x > canvas.width || ball.x + ball.radius > computer.x + computer.width) {
-        // SOUND: Rushing air missed ball
         playWosh();
         resolveRally("player");
     }
@@ -430,7 +453,10 @@ function render() {
     drawText(computerText, 3 * canvas.width / 4, 60, "#FFF");
     drawText(`(S)peed: ${computer.speedLevel}`, 3 * canvas.width / 4 - 60, 100, "#888", "16px");
     drawText(`(R)eaction: ${computer.reactionLevel}`, 3 * canvas.width / 4 - 60, 125, "#888", "16px");
+    
+    // UI Labels
     drawText("(N)ew game", 25, canvas.height - 25, "#555", "16px");
+    drawText(`(A)udio: ${isMuted ? "OFF" : "ON"}`, 160, canvas.height - 25, "#555", "16px");
     drawText("(Z) Trigger trap test", canvas.width - 240, canvas.height - 25, "#333", "16px");
 
     // Draw Ghost
