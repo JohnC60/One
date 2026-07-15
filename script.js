@@ -57,7 +57,7 @@ const ghost = {
     bottomLimit: canvas.height - 45,
     timeElapsed: 0,
     
-    colors: ["#FF3333", "#FFFFFF", "#3333FF"], 
+    colors: ["#FF0000", "#FFFFFF", "#0000FF"], 
     colorIndex: 0,
     wasMovingDown: true 
 };
@@ -495,7 +495,7 @@ function render() {
 
     // Particles
     particles.forEach(p => {
-        ctx.fillStyle = p.color.replace(")", `, ${p.alpha})`).replace("#FF3333", `rgba(255, 51, 51, ${p.alpha})`).replace("#FFFFFF", `rgba(255, 255, 255, ${p.alpha})`).replace("#3333FF", `rgba(51, 51, 255, ${p.alpha})`);
+        ctx.fillStyle = p.color.replace(")", `, ${p.alpha})`).replace("#FF0000", `rgba(255, 0, 0, ${p.alpha})`).replace("#FFFFFF", `rgba(255, 255, 255, ${p.alpha})`).replace("#0000FF", `rgba(0, 0, 255, ${p.alpha})`);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fill();
