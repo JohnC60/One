@@ -57,16 +57,97 @@ const ghost = {
     bottomLimit: canvas.height - 45,
     timeElapsed: 0,
     
-    // NEW: Color cycling properties
-    colors: ["#FF3333", "#FFFFFF", "#3333FF"], // Red, White, Blue hex codes
+    colors: ["#FF3333", "#FFFFFF", "#3333FF"], 
     colorIndex: 0,
-    wasMovingDown: true // Tracks previous frame direction to detect edge turns
+    wasMovingDown: true 
 };
 
 let particles = [];
 let ghostTimeout = null; 
 
+// ==========================================
+// --- WEB AUDIO API AUDIO SYNTHESIZER ---
+// ==========================================
+
+let audioCtx = null;
+
+// Initialize the audio context on the first user interaction (browser security policy)
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // Resume if suspended (common in some browsers)
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+// 1. Core synthesizer player for tones (Paddles, Walls, Explosions)
+function playTone(startFreq, endFreq, type, duration) {
+    if (!audioCtx) return;
+    
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = type;
+    osc.frequency.setValueAtTime(startFreq, audioCtx.currentTime);
+    
+    // Pitch sweep/bend if an end frequency is provided
+    if (endFreq !== startFreq) {
+        osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + duration);
+    }
+    
+    // Smooth volume fade-out (prevents speaker clicking)
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+// 2. Specialized synthesizer for the "Wosh" (Missed Ball / Pass) using white noise
+function playWosh() {
+    if (!audioCtx) return;
+
+    const bufferSize = audioCtx.sampleRate * 0.4; // 0.4 seconds duration
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Fill buffer with random noise values
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+
+    const noiseNode = audioCtx.createBufferSource();
+    noiseNode.buffer = buffer;
+
+    // Apply a lowpass filter to make it sound like rushing air (wosh)
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1000, audioCtx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.4);
+
+    // Fade out volume smoothly
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+    noiseNode.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    noiseNode.start();
+}
+
+// ==========================================
+
 function createExplosion(x, y, color) {
+    // Play a heavy, deep retro pitch-bend explosion
+    playTone(150, 10, "sawtooth", 0.5);
+
     for (let i = 0; i < 20; i++) {
         particles.push({
             x: x,
@@ -75,12 +156,13 @@ function createExplosion(x, y, color) {
             vy: (Math.random() - 0.5) * 8,
             radius: Math.random() * 4 + 2,
             alpha: 1,
-            color: color // Explodes with the ghost's current active color
+            color: color 
         });
     }
 }
 
 function startNewGame() {
+    initAudio();
     player.score = 0;
     computer.score = 0;
     particles = []; 
@@ -91,6 +173,7 @@ function startNewGame() {
 // --- Input Tracking ---
 const keysPressed = {};
 window.addEventListener('keydown', (e) => {
+    initAudio(); // Initialize sound on key down
     keysPressed[e.key] = true;
     if (e.key === 's' || e.key === 'S') computer.speedLevel = (computer.speedLevel + 1) % 10;
     if (e.key === 'r' || e.key === 'R') computer.reactionLevel = (computer.reactionLevel + 1) % 10;
@@ -120,7 +203,6 @@ function drawCircle(x, y, r, color) {
 }
 
 function drawGhost(x, y, w, h) {
-    // UPDATED: Dynamically pulls color from the color palette array
     ctx.fillStyle = ghost.colors[ghost.colorIndex];
     
     ctx.beginPath();
@@ -134,8 +216,6 @@ function drawGhost(x, y, w, h) {
     ctx.closePath();
     ctx.fill();
 
-    // Ghost Eyes (White eyeballs, dark blue pupil)
-    // If the ghost is currently white, make the eyeballs light gray so they remain visible
     ctx.fillStyle = (ghost.colorIndex === 1) ? "#DDD" : "#FFF";
     ctx.fillRect(x + 6, y + 8, 4, 6);
     ctx.fillRect(x + 18, y + 8, 4, 6);
@@ -242,25 +322,24 @@ function update() {
     // 4. Ball Collision with Top/Bottom Walls
     if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
         ball.speedY = -ball.speedY;
+        
+        // SOUND: Wall Ricochet Thud (triangle wave, 180Hz, 0.08s)
+        playTone(180, 180, "triangle", 0.08);
     }
 
     // 5. Ghost Movement & Color Cycling
     ghost.timeElapsed += (1 / 60); 
     let oscillation = (Math.sin((Math.PI * 2 * ghost.timeElapsed) / 4) + 1) / 2; 
     
-    // Calculate new position
     let nextY = ghost.topLimit + oscillation * (ghost.bottomLimit - ghost.topLimit);
     
-    // NEW: Direction edge-trigger checker
-    // Compares if moving down in the previous frame vs this frame
     let isMovingDownNow = (nextY > ghost.y);
     if (ghost.wasMovingDown !== isMovingDownNow) {
-        // Direction shifted! Cycle to the next color index (0 -> 1 -> 2 -> 0)
         ghost.colorIndex = (ghost.colorIndex + 1) % ghost.colors.length;
     }
     
     ghost.y = nextY;
-    ghost.wasMovingDown = isMovingDownNow; // Lock frame state
+    ghost.wasMovingDown = isMovingDownNow; 
 
     // 6. Paddle Collisions & Anti-Trap Execution
     if (collision(ball, player)) {
@@ -268,6 +347,9 @@ function update() {
             ball.x = player.x + player.width + ball.radius;
             ball.speedX = Math.abs(ball.speedX); 
             
+            // SOUND: High-pitch "Pok" (square wave, 800Hz, 0.05s)
+            playTone(800, 800, "square", 0.05);
+
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
             else consecutiveFlatBounces = 0;
 
@@ -286,6 +368,9 @@ function update() {
             ball.x = computer.x - ball.radius;
             ball.speedX = -Math.abs(ball.speedX); 
             
+            // SOUND: High-pitch "Pok" (square wave, 800Hz, 0.05s)
+            playTone(800, 800, "square", 0.05);
+
             if (Math.abs(ball.speedY) < 0.2) consecutiveFlatBounces++;
             else consecutiveFlatBounces = 0;
 
@@ -303,6 +388,8 @@ function update() {
     // 7. Ghost Obstacle Collision
     if (ghost.active && collision(ball, ghost)) {
         ghost.active = false; 
+        
+        // SOUND: Triggered inside createExplosion
         createExplosion(ghost.x + ghost.width / 2, ghost.y + ghost.height / 2, ghost.colors[ghost.colorIndex]);
         
         if (lastHitBy === "player") resolveRally("computer");
@@ -319,10 +406,14 @@ function update() {
         if (p.alpha <= 0) particles.splice(i, 1); 
     }
 
-    // 9. Regular Goal Scoring
+    // 9. Regular Goal Scoring (Rally Ends with a "Wosh" sound)
     if (ball.x < 0 || ball.x - ball.radius < player.x) {
+        // SOUND: Rushing air missed ball
+        playWosh();
         resolveRally("computer");
     } else if (ball.x > canvas.width || ball.x + ball.radius > computer.x + computer.width) {
+        // SOUND: Rushing air missed ball
+        playWosh();
         resolveRally("player");
     }
 }
@@ -349,7 +440,6 @@ function render() {
 
     // Particles
     particles.forEach(p => {
-        // Pulls particle color dynamically to match the color of the ghost when it exploded
         ctx.fillStyle = p.color.replace(")", `, ${p.alpha})`).replace("#FF3333", `rgba(255, 51, 51, ${p.alpha})`).replace("#FFFFFF", `rgba(255, 255, 255, ${p.alpha})`).replace("#3333FF", `rgba(51, 51, 255, ${p.alpha})`);
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
