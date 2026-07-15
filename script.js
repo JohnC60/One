@@ -32,6 +32,10 @@ const computer = {
     speed: 4.5
 };
 
+// Track who touched the ball last ("player" or "computer")
+// Starts as null for a fresh serve
+let lastHitBy = null; 
+
 // --- Obstacles & Explosion Particles ---
 const obstacles = [
     { x: canvas.width / 2 - 15, y: 0, width: 30, height: 30, active: true },
@@ -40,22 +44,17 @@ const obstacles = [
 
 let particles = [];
 
-// Function to randomize obstacle Y positions along the centerline
 function randomizeObstacles() {
-    // Obstacle 1: Upper half of the centerline
     obstacles[0].y = Math.random() * (canvas.height / 2 - 60) + 20;
     obstacles[0].active = true;
 
-    // Obstacle 2: Lower half of the centerline
     obstacles[1].y = Math.random() * (canvas.height / 2 - 60) + (canvas.height / 2) + 20;
     obstacles[1].active = true;
 }
 
-// Randomize them immediately on start, then setup a timer for every 5 seconds (5000ms)
 randomizeObstacles();
 setInterval(randomizeObstacles, 5000);
 
-// Function to trigger the explosion particle effect
 function createExplosion(x, y) {
     for (let i = 0; i < 20; i++) {
         particles.push({
@@ -90,7 +89,7 @@ function drawCircle(x, y, r, color) {
 
 function drawNet() {
     for (let i = 0; i <= canvas.height; i += 15) {
-        drawRect(canvas.width / 2 - 1, i, 2, 10, "#444"); // Darker net so obstacles stand out
+        drawRect(canvas.width / 2 - 1, i, 2, 10, "#444"); 
     }
 }
 
@@ -105,6 +104,7 @@ function resetBall() {
     ball.y = canvas.height / 2;
     ball.speedX = -ball.speedX; 
     ball.speedY = 4 * (Math.random() > 0.5 ? 1 : -1);
+    lastHitBy = null; // Reset last hit tracking for the new serve
 }
 
 // --- Collision Detection ---
@@ -138,36 +138,51 @@ function update() {
         ball.speedY = -ball.speedY;
     }
 
-    // 5. Obstacle Collisions ("Eating" the ball and exploding)
+    // 5. Paddle Collisions & Last Hit Tracking
+    // Check collision with human player
+    if (collision(ball, player)) {
+        ball.speedX = -ball.speedX;
+        let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
+        ball.speedY = collidePoint * 7;
+        lastHitBy = "player"; // Track P1 hit
+    }
+    // Check collision with computer
+    else if (collision(ball, computer)) {
+        ball.speedX = -ball.speedX;
+        let collidePoint = (ball.y - (computer.y + computer.height / 2)) / (computer.height / 2);
+        ball.speedY = collidePoint * 7;
+        lastHitBy = "computer"; // Track CPU hit
+    }
+
+    // 6. Obstacle Collisions (Punish the player who touched it last)
     obstacles.forEach(obs => {
         if (obs.active && collision(ball, obs)) {
-            obs.active = false; // Deactivate the obstacle until the next 5s reset
+            obs.active = false; 
             createExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2);
-            resetBall(); // The obstacle "eats" the ball and respawns it
+            
+            // Score penalty logic:
+            if (lastHitBy === "player") {
+                computer.score++; // Player hit it into the obstacle, computer gets the point
+            } else if (lastHitBy === "computer") {
+                player.score++;   // Computer hit it into the obstacle, player gets the point
+            }
+            
+            resetBall(); 
         }
     });
 
-    // 6. Particle Updates (Explosion physics)
+    // 7. Particle Updates
     for (let i = particles.length - 1; i >= 0; i--) {
         let p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.alpha -= 0.02; // Fade out slowly
+        p.alpha -= 0.02; 
         if (p.alpha <= 0) {
-            particles.splice(i, 1); // Remove dead particles
+            particles.splice(i, 1); 
         }
     }
 
-    // 7. Paddle Collisions
-    let playerPaddle = (ball.x < canvas.width / 2) ? player : computer;
-    if (collision(ball, playerPaddle)) {
-        ball.speedX = -ball.speedX;
-        let collidePoint = (ball.y - (playerPaddle.y + playerPaddle.height / 2));
-        collidePoint = collidePoint / (playerPaddle.height / 2);
-        ball.speedY = collidePoint * 7;
-    }
-
-    // 8. Scoring
+    // 8. Regular Goal Scoring
     if (ball.x - ball.radius < 0) {
         computer.score++;
         resetBall();
@@ -179,24 +194,19 @@ function update() {
 
 // --- Render Everything ---
 function render() {
-    // Clear screen
     drawRect(0, 0, canvas.width, canvas.height, "#000");
 
-    // Draw background elements
     drawNet();
     drawText(player.score, canvas.width / 4, 60, "#FFF");
     drawText(computer.score, 3 * canvas.width / 4, 60, "#FFF");
 
-    // Draw active obstacles (Bright Red Retro Squares)
     obstacles.forEach(obs => {
         if (obs.active) {
             drawRect(obs.x, obs.y, obs.width, obs.height, "#FF3333");
-            // Give it a tiny inner detail to look like a dangerous block
             drawRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10, "#A00000");
         }
     });
 
-    // Draw explosion particles
     particles.forEach(p => {
         ctx.fillStyle = `rgba(255, 100, 0, ${p.alpha})`;
         ctx.beginPath();
@@ -204,7 +214,6 @@ function render() {
         ctx.fill();
     });
 
-    // Draw Paddles and Ball
     drawRect(player.x, player.y, player.width, player.height, player.color);
     drawRect(computer.x, computer.y, computer.width, computer.height, computer.color);
     drawCircle(ball.x, ball.y, ball.radius, ball.color);
